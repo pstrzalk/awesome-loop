@@ -7,7 +7,7 @@ import Inventory from './inventory.js';
 import Maze from './maze.js';
 
 const window = { width: Dimensions.get('window').width, height: Dimensions.get('window').height };
-const backgroundColor = '#A7DB1A';
+const backgroundColor = '#363636';
 const wallColor = '#A7DB1A';
 
 const heroWidth = 35;
@@ -21,6 +21,19 @@ const gridCellWidth = stageWidth / gridWidth;
 const gridCellHeight = stageHeight / gridHeight;
 const iconWidth = 2 * gridCellWidth;
 const iconHeight = 2 * gridCellHeight;
+
+const zeroLevelMap = [
+  '00011111111111111111',
+  '0001110c001111101091',
+  '11001111101111000011',
+  '111010a1101111011011',
+  '11100011100B00011011',
+  '11101111101111111011',
+  '11001111101110b11C11',
+  '11011111101000111011',
+  '110A0000000011111001',
+  '11111111111111111111',
+];
 
 export default class Game extends React.Component {
   setNativeProps = (nativeProps) => {
@@ -38,59 +51,71 @@ export default class Game extends React.Component {
      position: { x: 0, y: 0 },
      iW: iconWidth,
      iH: iconHeight,
-     map: [
-       '00011111111111111111',
-       '00011100001111101001',
-       '00001111101111000011',
-       '01101111101111011011',
-       '91101111100000011011',
-       '01101111101111111011',
-       'A1001111101110111011',
-       'B1011111101000111011',
-       'C1000000000011111001',
-       '00000cba000000000000',
-     ]
+     map: zeroLevelMap.slice(0),
+     mode: 'levelEnd',
+     levelEndProgress: 0
     };
   }
 
   changePosition(deltaX, deltaY) {
-    const xTo = this.state.position.x + deltaX;
-    if (xTo < 0 || xTo > gridWidth - 1) {
+    const x = this.state.position.x + deltaX;
+    if (x < 0 || x > gridWidth - 1) {
       return false;
     }
-    const yTo = this.state.position.y + deltaY;
-    if (yTo < 0 || yTo > gridHeight - 1) {
-      return false;
-    }
-
-    const moveTarget = this.mapCell(xTo, yTo);
-
-    // WALL?
-    if (moveTarget == '1') {
+    const y = this.state.position.y + deltaY;
+    if (y < 0 || y > gridHeight - 1) {
       return false;
     }
 
-    this.setState({
-      position: { x: xTo, y: yTo }
-    });
+    const mapSymbol = this.mapCell(x, y);
 
-    this.collectItem(moveTarget);
+    if (this._maze.isWall(x, y)) {
+      // WALL
+      return false;
+    } else if (this._maze.isDoor(x, y)) {
+      // DOOR
+      let opened = false;
+
+      // BRUTE FORCE TRY EACH ITEM TO OPEN
+      this._inventory.items().forEach(item => {
+        if (this._maze.canOpenDoor(x, y, item)) {
+          opened = true;
+        }
+      });
+      if (opened) {
+        // Mark as opened on map
+        this.cleanMapPosition(x, y);
+      } else {
+        // You shall not pass
+        return false;
+      }
+    }
+
+    this.setState({ position: { x: x, y: y } });
+
+    if (this._maze.isPickable(x, y)) {
+      this._inventory.add(mapSymbol);
+      this.cleanMapPosition(x, y);
+    }
 
     // VICTORY POINT
-    if (moveTarget == 9) {
+    if (this._maze.isFinish(x, y)) {
       console.log('YOU WIN!');
+      this.setState({ mode: 'levelEnd' })
     }
     return true;
   }
 
-  collectItem(mapItem) {
-    if (['A', 'B', 'C'].indexOf(mapItem) !== -1) {
-      // Found key
-      this._inventory.add(mapItem);
-      return true;
-    }
+  cleanMapPosition(x, y) {
+    const newMap = this.state.map;
+    const newMapRow = newMap[y];
+    newMap[y] = newMap[y].split('');
+    newMap[y][x] = this._maze.PASS;
+    newMap[y] = newMap[y].join('');
 
-    return false;
+    this.setState({map: newMap});
+    this._maze.setNativeProps({map: newMap});
+    return true;
   }
 
   go(ev) {
@@ -114,28 +139,34 @@ export default class Game extends React.Component {
     }
   }
 
-
   update = () => {
-    // console.log('update', this.state.map);
-    // this.setState({
-    //   map: [
-    //     Math.round(Math.random()) + '0011111111111111111',
-    //     '00011100001111101001',
-    //     '00001111101111000011',
-    //     '11101111101111011011',
-    //     '11101111100000011011',
-    //     '11101111101111111011',
-    //     '11001111101110111011',
-    //     '11011111101000111011',
-    //     '11000000000011111001',
-    //     '11111111111111111100',
-    //   ]
-    // });
-    // this._maze.setNativeProps({map: this.state.map});
+    if (this.state.mode == 'levelEnd') {
+      if (this.state.levelEndProgress < 1) {
+        this.setState({
+          levelEndProgress: this.state.levelEndProgress + 0.02
+        })
+      } else {
+        this.setState({
+          map: zeroLevelMap.slice(0),
+          mode: 'game',
+          levelEndProgress: 0,
+          position: { x: 0, y: 0 }
+        });
+        this._inventory.clear();
+      }
+    }    // this._maze.setNativeProps({map: this.state.map});
+  }
+
+  nextLevel() {
+
   }
 
   mapCell(x, y) {
     return this.state.map[y][x];
+  }
+
+  map() {
+
   }
 
   componentDidMount() {
@@ -146,14 +177,38 @@ export default class Game extends React.Component {
     });
   }
 
-
   componentWillUnmount() {
     this.context.loop.unsubscribe(this.update);
   }
 
   render() {
-    pos = this.state.position;
+    if (this.state.mode == 'levelEnd') {
+      return this.renderLevelEnd();
+    }
+    return this.renderGame();
+  }
 
+  renderLevelEnd() {
+    return (
+      <TouchableWithoutFeedback style={ styles.fullWindow } onPress={ (ev) => this.onLevelFinish(ev) } >
+        <View style={ styles.toucharea }>
+          <Image
+            style={{
+              left: window.width * this.context.scale * this.state.levelEndProgress,
+              flex: 1,
+              width: 300,
+              height: 300,
+              backgroundColor:'transparent',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+            source={ require('./images/knight.png') } />
+        </View>
+      </TouchableWithoutFeedback>
+    );
+  }
+
+  renderGame() {
     return (
       <TouchableWithoutFeedback style={ styles.fullWindow } onPress={ (ev) => this.go(ev) } >
         <View style={ styles.toucharea }>
@@ -169,15 +224,15 @@ export default class Game extends React.Component {
                 height={gridCellHeight * this.context.scale}
                 style={{
                   position: 'absolute',
-                  left: Math.floor(pos.x * gridCellWidth * this.context.scale),
-                  bottom: Math.floor(pos.y * gridCellHeight * this.context.scale),
+                  left: Math.floor(this.state.position.x * gridCellWidth * this.context.scale),
+                  bottom: Math.floor(this.state.position.y * gridCellHeight * this.context.scale),
                   backgroundColor: backgroundColor
                 }} />
+          <Inventory style={styles.inventory}
+                     ref={component => this._inventory = component} />
         </View>
-        <Inventory style={styles.inventory}
-                   ref={component => this._inventory = component} />
       </TouchableWithoutFeedback>
-    )
+    );
   }
 }
 
@@ -186,7 +241,8 @@ const styles = StyleSheet.create({
     flex: 1,
     width: window.width,
     height: window.height,
-    backgroundColor: '#999'
+    backgroundColor: '#000',
+    display: 'none'
   },
 
   fullWindow: {
