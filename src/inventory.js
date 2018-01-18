@@ -3,6 +3,7 @@ import { View, Text } from 'react-native';
 
 export default class Inventory extends React.Component {
   add(item) {
+    console.log('Inventory ADD', item);
     this.setState({ items: this.state.items.concat([item]) });
     console.log(this.state.items);
     return true;

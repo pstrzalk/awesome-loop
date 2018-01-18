@@ -1,41 +1,28 @@
 import React from 'react';
-import { StyleSheet, Image, View, Dimensions, TouchableWithoutFeedback } from 'react-native';
+import { Image, View, TouchableWithoutFeedback } from 'react-native';
 import { Loop, Stage } from 'react-game-kit/native';
-import PropTypes from 'prop-types';
+import { maps } from './maps.js';
+import { styles } from './styles.js';
 import Hero from './hero.js';
-import Inventory from './inventory.js';
 import Maze from './maze.js';
-
-const window = { width: Dimensions.get('window').width, height: Dimensions.get('window').height };
-const backgroundColor = '#363636';
-const wallColor = '#A7DB1A';
-
-const heroWidth = 35;
-const heroHeight = 35;
-const stageWidth = 1024;
-const stageHeight = 576;
-const gridWidth = 20;
-const gridHeight = 10;
-
-const gridCellWidth = stageWidth / gridWidth;
-const gridCellHeight = stageHeight / gridHeight;
-const iconWidth = 2 * gridCellWidth;
-const iconHeight = 2 * gridCellHeight;
-
-const zeroLevelMap = [
-  '00011111111111111111',
-  '0001110c001111101091',
-  '11001111101111000011',
-  '111010a1101111011011',
-  '11100011100B00011011',
-  '11101111101111111011',
-  '11001111101110b11C11',
-  '11011111101000111011',
-  '110A0000000011111001',
-  '11111111111111111111',
-];
+import PropTypes from 'prop-types';
+import {
+  backgroundColor, gridCellHeight, gridCellWidth, gridHeight, gridWidth,
+  heroWidth, heroHeight, iconWidth, iconHeight,
+  stageWidth, stageHeight, wallColor, window,
+} from './consts.js';
 
 export default class Game extends React.Component {
+  KEY_PICKUP_IMAGES = {
+    a: require('./images/key-a.png'),
+    b: require('./images/key-b.png'),
+    c: require('./images/key-c.png'),
+    d: require('./images/key-d.png'),
+  }
+
+  IMAGE_CHEST = require('./images/treasure-chest.png');
+  IMAGE_FIREWORKS = require('./images/fireworks.gif');
+
   setNativeProps = (nativeProps) => {
     this._root.setNativeProps(nativeProps);
   }
@@ -51,33 +38,43 @@ export default class Game extends React.Component {
      position: { x: 0, y: 0 },
      iW: iconWidth,
      iH: iconHeight,
-     map: zeroLevelMap.slice(0),
-     mode: 'levelEnd',
-     levelEndProgress: 0
+     mode: 'levelComplete',
+
+     map: maps[0].slice(0),
+
+     animationProgress: 0,
+     animationScale: 0,
+     level: 0,
+     items: [],
+
+     pickUpImage: require('./images/knight.png'),
+     t: new Date().getMilliseconds()
     };
   }
 
-  changePosition(deltaX, deltaY) {
+  changePosition(vector, vectorSecondary) {
+    let deltaX = vector[0];
+    let deltaY = vector[1];
     const x = this.state.position.x + deltaX;
     if (x < 0 || x > gridWidth - 1) {
-      return false;
+      return vectorSecondary != [0, 0] ? this.changePosition(vectorSecondary, [0, 0]) : false;
     }
     const y = this.state.position.y + deltaY;
     if (y < 0 || y > gridHeight - 1) {
-      return false;
+      return vectorSecondary != [0, 0] ? this.changePosition(vectorSecondary, [0, 0]) : false;
     }
 
     const mapSymbol = this.mapCell(x, y);
 
     if (this._maze.isWall(x, y)) {
       // WALL
-      return false;
+      return vectorSecondary != [0, 0] ? this.changePosition(vectorSecondary, [0, 0]) : false;
     } else if (this._maze.isDoor(x, y)) {
       // DOOR
       let opened = false;
 
       // BRUTE FORCE TRY EACH ITEM TO OPEN
-      this._inventory.items().forEach(item => {
+      this.state.items.forEach(item => {
         if (this._maze.canOpenDoor(x, y, item)) {
           opened = true;
         }
@@ -94,14 +91,14 @@ export default class Game extends React.Component {
     this.setState({ position: { x: x, y: y } });
 
     if (this._maze.isPickable(x, y)) {
-      this._inventory.add(mapSymbol);
+      this.setState({ items: this.state.items.concat([mapSymbol]) });
       this.cleanMapPosition(x, y);
+      this.setState({ mode: 'pickUp', pickUpImage: this.KEY_PICKUP_IMAGES[mapSymbol] });
     }
 
     // VICTORY POINT
     if (this._maze.isFinish(x, y)) {
-      console.log('YOU WIN!');
-      this.setState({ mode: 'levelEnd' })
+      this.setState({ mode: 'levelComplete' })
     }
     return true;
   }
@@ -123,50 +120,121 @@ export default class Game extends React.Component {
     const gridY = Math.floor((window.height - ev.nativeEvent.pageY) / this.state.gcH);
     const deltaX = Math.abs(this.state.position.x - gridX);
     const deltaY = Math.abs(this.state.position.y - gridY);
+    let vectorSecondary = [0, 0];
 
     if (deltaX >= deltaY && this.state.position.x < gridX) {
       // Go Right
-      return this.changePosition(1, 0);
+      if (this.state.position.y > gridY) {
+        vectorSecondary = [0, -1];
+      } else if (this.state.position.y < gridY) {
+        vectorSecondary = [0, 1];
+      }
+      return this.changePosition([1, 0], vectorSecondary);
     } else if (deltaX >= deltaY && this.state.position.x > gridX) {
       // Go Left
-      return this.changePosition(-1, 0);
+      if (this.state.position.y > gridY) {
+        vectorSecondary = [0, -1];
+      } else if (this.state.position.y < gridY) {
+        vectorSecondary = [0, 1];
+      }
+      return this.changePosition([-1, 0], vectorSecondary);
     } else if (deltaX < deltaY && this.state.position.y > gridY) {
       // Go Down
-      return this.changePosition(0, -1);
+      if (this.state.position.x < gridX) {
+        vectorSecondary = [1, 0];
+      } else if (this.state.position.x > gridX) {
+        vectorSecondary = [-1, 0];
+      }
+      return this.changePosition([0, -1], vectorSecondary);
     } else if (deltaX < deltaY && this.state.position.y < gridY) {
       // Go Up
-      return this.changePosition(0, 1);
+      if (this.state.position.x < gridX) {
+        vectorSecondary = [1, 0];
+      } else if (this.state.position.x > gridX) {
+        vectorSecondary = [-1, 0];
+      }
+      return this.changePosition([0, 1], vectorSecondary);
     }
   }
 
-  update = () => {
-    if (this.state.mode == 'levelEnd') {
-      if (this.state.levelEndProgress < 1) {
-        this.setState({
-          levelEndProgress: this.state.levelEndProgress + 0.02
-        })
-      } else {
-        this.setState({
-          map: zeroLevelMap.slice(0),
-          mode: 'game',
-          levelEndProgress: 0,
-          position: { x: 0, y: 0 }
-        });
-        this._inventory.clear();
-      }
-    }    // this._maze.setNativeProps({map: this.state.map});
+  restart = (ev) => {
+    this.setState({
+      map: maps[0].slice(0),
+      mode: 'levelComplete',
+      items: [],
+      level: 0,
+      animationProgress: 0,
+      position: { x: 0, y: 0 }
+    });
   }
 
-  nextLevel() {
+  update = () => {
+    const newT = new Date().getMilliseconds();
+    let dt;
+    if (this.state.t > newT) {
+      dt = 1000 - this.state.t + newT;
+    } else {
+      dt = newT - this.state.t;
+    }
+    dt = Math.min(dt, 40);
 
+    if (this.state.mode == 'pickUp') {
+      let newAnimationProgress;
+      if (this.state.animationProgress >= 6.28) {
+        newAnimationProgress = 0;
+        this.setState({ mode: 'game' });
+      } else {
+        newAnimationProgress = this.state.animationProgress + dt/300;
+      }
+
+      this.setState({
+        animationProgress: newAnimationProgress,
+        animationScale: Math.abs(Math.sin(newAnimationProgress)),
+        t: newT
+      });
+    } else if (this.state.mode == 'levelComplete') {
+      if (this.state.animationProgress < 1) {
+        this.setState({
+          animationProgress: this.state.animationProgress + dt/1000,
+          t: newT
+        });
+      } else {
+        const nextLevel = this.state.level + 1;
+        if (maps[nextLevel]) {
+          this.setState({
+            map: maps[nextLevel].slice(0),
+            mode: 'game',
+            items: [],
+            level: nextLevel,
+            animationProgress: 0,
+            position: { x: 0, y: 0 },
+            t: newT
+          });
+        } else {
+          this.setState({
+            map: maps[0].slice(0),
+            mode: 'win',
+            items: [],
+            level: 0,
+            animationProgress: 0,
+            position: { x: 0, y: 0 },
+            t: newT
+          });
+        }
+      }
+    } else if (this.state.mode == 'win') {
+      this.setState({
+        t: newT
+      });
+    } else {
+      this.setState({
+        t: newT
+      });
+    }
   }
 
   mapCell(x, y) {
     return this.state.map[y][x];
-  }
-
-  map() {
-
   }
 
   componentDidMount() {
@@ -182,19 +250,79 @@ export default class Game extends React.Component {
   }
 
   render() {
-    if (this.state.mode == 'levelEnd') {
-      return this.renderLevelEnd();
+    if (this.state.mode == 'pickUp') {
+      return this.renderPickUp();
+    } else if (this.state.mode == 'levelComplete') {
+      return this.renderLevelComplete();
+    } else if (this.state.mode == 'win') {
+      return this.renderWin();
+    } else {
+      return this.renderGame();
     }
-    return this.renderGame();
   }
 
-  renderLevelEnd() {
+  renderWin() {
     return (
-      <TouchableWithoutFeedback style={ styles.fullWindow } onPress={ (ev) => this.onLevelFinish(ev) } >
-        <View style={ styles.toucharea }>
+      <TouchableWithoutFeedback style={ styles.fullWindow } onPress={ (ev) => this.restart(ev) } >
+        <View style={ styles.winWindow }>
+          <View style={{ width: window.width, height: window.height, }}>
+            <Image
+              style={{
+                flex: 1,
+                width: undefined,
+                height: undefined,
+                backgroundColor: 'transparent',
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+              source={ this.IMAGE_FIREWORKS } />
+            <Image
+              style={{
+                flex: 1,
+                position: 'absolute',
+                width: 300,
+                height: 220,
+                left: (window.width - 150) / 2,
+                top: (window.height - 110) / 2
+              }}
+              source={ this.IMAGE_CHEST } />
+          </View>
+        </View>
+      </TouchableWithoutFeedback>
+    )
+  }
+
+  renderPickUp() {
+    return (
+      <View style={ styles.pickUpWindow }>
+        <View style={{
+                width: 200 * (1 - 0.3 * this.state.animationScale),
+                height: 200 * (1 - 0.3 * this.state.animationScale),
+                left: (window.width / 2 - 100) + 30 * this.state.animationScale,
+                top: (window.height / 2 - 100) + 30 * this.state.animationScale
+              }}>
+        <Image
+          style={{
+            flex: 1,
+            width: undefined,
+            height: undefined,
+            backgroundColor: 'transparent',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+          source={ this.state.pickUpImage } />
+        </View>
+      </View>
+    );
+  }
+
+  renderLevelComplete() {
+    return (
+      <View style={ styles.toucharea }>
+        <View style={ styles.fullWindow }>
           <Image
             style={{
-              left: window.width * this.context.scale * this.state.levelEndProgress,
+              left: window.width * this.context.scale * this.state.animationProgress,
               flex: 1,
               width: 300,
               height: 300,
@@ -204,7 +332,7 @@ export default class Game extends React.Component {
             }}
             source={ require('./images/knight.png') } />
         </View>
-      </TouchableWithoutFeedback>
+      </View>
     );
   }
 
@@ -228,33 +356,8 @@ export default class Game extends React.Component {
                   bottom: Math.floor(this.state.position.y * gridCellHeight * this.context.scale),
                   backgroundColor: backgroundColor
                 }} />
-          <Inventory style={styles.inventory}
-                     ref={component => this._inventory = component} />
         </View>
       </TouchableWithoutFeedback>
     );
   }
 }
-
-const styles = StyleSheet.create({
-  inventory: {
-    flex: 1,
-    width: window.width,
-    height: window.height,
-    backgroundColor: '#000',
-    display: 'none'
-  },
-
-  fullWindow: {
-    flex: 1,
-    width: window.width,
-    height: window.height
-  },
-
-  toucharea: {
-    flex: 1,
-    width: window.width,
-    height: window.height,
-    backgroundColor: backgroundColor
-  },
-});
