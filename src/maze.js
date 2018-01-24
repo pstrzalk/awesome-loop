@@ -1,8 +1,10 @@
 import React from 'react';
 import { StyleSheet, Image, View, Dimensions, TouchableWithoutFeedback } from 'react-native';
+import { styles } from './styles.js';
 
 export default class Maze extends React.Component {
   WALL = '1';
+  GOLD = 'g';
   DOORS = ['A', 'B', 'C', 'D'];
   DOOR_COLORS = {
     'A': '#FFFF00',
@@ -17,12 +19,20 @@ export default class Maze extends React.Component {
     c: require('./images/key-c.png'),
     d: require('./images/key-d.png'),
   }
+  GOLD_IMAGE = require('./images/gold.gif');
   PASS = '0';
+  ROOT_IMAGES = [
+    require('./images/roots_1.png'),
+    require('./images/roots_2.png'),
+    require('./images/roots_3.png'),
+    require('./images/roots_4.png'),
+    require('./images/roots_5.png')
+  ];
   START = '0';
   FINISH = '9';
 
   canOpenDoor(x, y, key) {
-    if (this.isDoor(x, y) && this.state.map[y][x].toUpperCase() == key.toUpperCase()) {
+    if (this.isDoor(x, y) && this.mapCell(x, y).toUpperCase() == key.toUpperCase()) {
       return true;
     }
     return false;
@@ -37,9 +47,10 @@ export default class Maze extends React.Component {
 
   componentDidMount() {
     this.setState({
-      walls: [],
+      doors: [],
+      golds: [],
       keys: [],
-      doors: []
+      walls: []
     })
   }
 
@@ -52,12 +63,16 @@ export default class Maze extends React.Component {
     this.parseMap();
   }
 
+  isGold(x, y) {
+    return this.GOLD === this.mapCell(x, y);
+  }
+
   isDoor(x, y) {
-    return this.DOORS.indexOf(this.state.map[y][x]) !== -1;
+    return this.DOORS.indexOf(this.mapCell(x, y)) !== -1;
   }
 
   isKey(x, y) {
-    return this.KEYS.indexOf(this.state.map[y][x]) !== -1;
+    return this.KEYS.indexOf(this.mapCell(x, y)) !== -1;
   }
 
   isPickable(x, y) {
@@ -65,18 +80,23 @@ export default class Maze extends React.Component {
   }
 
   isWall(x, y) {
-    return this.WALL == this.state.map[y][x];
+    return this.WALL == this.mapCell(x, y);
   }
 
   isFinish(x, y) {
-    return this.FINISH == this.state.map[y][x];
+    return this.FINISH == this.mapCell(x, y);
+  }
+
+  mapCell(x, y) {
+    return this.state.map[y][x];
   }
 
   parseMap() {
-    const walls = [];
     const doors = [];
-    const keys = [];
     const finishes = [];
+    const golds = [];
+    const keys = [];
+    const walls = [];
     let row;
     let symbol;
     let xPos;
@@ -87,11 +107,16 @@ export default class Maze extends React.Component {
       for (xPos = 0; xPos < row.length; xPos++) {
         mapEl = { x: xPos, y: yPos, symbol: row[xPos] };
         if (this.isWall(xPos, yPos)) {
+          if (Math.random() < 0.1) {
+            mapEl.diverse = true;
+          }
           walls.push(mapEl);
         } else if (this.isDoor(xPos, yPos)) {
           doors.push(mapEl);
         } else if (this.isKey(xPos, yPos)) {
           keys.push(mapEl);
+        } else if (this.isGold(xPos, yPos)) {
+          golds.push(mapEl);
         } else if (this.isFinish(xPos, yPos)) {
           finishes.push(mapEl);
         }
@@ -99,10 +124,11 @@ export default class Maze extends React.Component {
     }
 
     this.setState({
-      walls: walls,
       doors: doors,
       finishes: finishes,
       keys: keys,
+      golds: golds,
+      walls: walls
     });
   }
 
@@ -120,7 +146,13 @@ export default class Maze extends React.Component {
                        width: this.props.cellWidth,
                        height: this.props.cellHeight,
                        backgroundColor: this.props.color
-                     }} />
+                     }}>
+           {el.diverse ? (<Image source={ this.ROOT_IMAGES[0] }
+                                 style={{ flex: 1,
+                                          width: this.props.cellWidth,
+                                          height: this.props.cellHeight
+                                        }} />) : null}
+         </View>
       );
     });
 
@@ -146,14 +178,21 @@ export default class Maze extends React.Component {
                        width: this.props.cellWidth,
                        height: this.props.cellHeight
                      }} >
-           <Image style={{ flex: 1,
-                           width: undefined,
-                           height: undefined,
-                           backgroundColor:'transparent',
-                           justifyContent: 'center',
-                           alignItems: 'center',
-                         }}
-                   source={ this.KEY_IMAGES[el.symbol] } />
+           <Image style={ styles.mazeCellImage } source={ this.KEY_IMAGES[el.symbol] } />
+       </View>
+      );
+    });
+
+    const golds = this.state.golds.map((el) => {
+      return (
+        <View key={`${el.x}:${el  .y}`} style={{ flex: 1,
+                       position: 'absolute',
+                       left: el.x * this.props.cellWidth + this.props.cellWidth / 4,
+                       bottom: el.y * this.props.cellHeight + this.props.cellHeight / 4,
+                       width: this.props.cellWidth / 2,
+                       height: this.props.cellHeight / 2
+                     }} >
+           <Image style={ styles.mazeCellImage } source={ this.GOLD_IMAGE } />
        </View>
       );
     });
@@ -173,10 +212,11 @@ export default class Maze extends React.Component {
 
     return (
       <View style={this.props.style}>
-      {walls}
       {doors}
-      {keys}
       {finishes}
+      {golds}
+      {keys}
+      {walls}
       </View>
     )
   }

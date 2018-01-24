@@ -1,6 +1,13 @@
 {
   "expo": {
     "sdkVersion": "21.0.0",
-    "orientation": "landscape"
+    "orientation": "landscape",
+    "name": "Treasure Hunter",
+    "icon": "./src/images/knight.png",
+    "slug": "treasure-hunter",
+    "version": "1.0.0",
+    "android": {
+      "package": "com.psgames.treasurehunter"
+    }
   }
 }

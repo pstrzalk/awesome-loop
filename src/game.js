@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, View, TouchableWithoutFeedback } from 'react-native';
+import { Image, View, TouchableWithoutFeedback, Text } from 'react-native';
 import { Loop, Stage } from 'react-game-kit/native';
 import { maps } from './maps.js';
 import { styles } from './styles.js';
@@ -22,6 +22,8 @@ export default class Game extends React.Component {
 
   IMAGE_CHEST = require('./images/treasure-chest.png');
   IMAGE_FIREWORKS = require('./images/fireworks.gif');
+  IMAGE_GOLD = require('./images/gold.gif');
+  IMAGE_GOLD_STACK = require('./images/gold-stack.png');
 
   setNativeProps = (nativeProps) => {
     this._root.setNativeProps(nativeProps);
@@ -39,8 +41,9 @@ export default class Game extends React.Component {
      iW: iconWidth,
      iH: iconHeight,
      mode: 'levelComplete',
+     gold: 0,
 
-     map: maps[0].slice(0),
+     map: this.mapMaze(0),
 
      animationProgress: 0,
      animationScale: 0,
@@ -94,6 +97,9 @@ export default class Game extends React.Component {
       this.setState({ items: this.state.items.concat([mapSymbol]) });
       this.cleanMapPosition(x, y);
       this.setState({ mode: 'pickUp', pickUpImage: this.KEY_PICKUP_IMAGES[mapSymbol] });
+    } else if (this._maze.isGold(x, y)) {
+      this.setState({ gold: this.state.gold + 1 });
+      this.cleanMapPosition(x, y);
     }
 
     // VICTORY POINT
@@ -159,7 +165,7 @@ export default class Game extends React.Component {
 
   restart = (ev) => {
     this.setState({
-      map: maps[0].slice(0),
+      map: this.mapMaze(0),
       mode: 'levelComplete',
       items: [],
       level: 0,
@@ -200,9 +206,10 @@ export default class Game extends React.Component {
         });
       } else {
         const nextLevel = this.state.level + 1;
-        if (maps[nextLevel]) {
+        const mapNextLevel = this.mapMaze(nextLevel);
+        if (mapNextLevel) {
           this.setState({
-            map: maps[nextLevel].slice(0),
+            map: this.mapMaze(nextLevel),
             mode: 'game',
             items: [],
             level: nextLevel,
@@ -212,7 +219,7 @@ export default class Game extends React.Component {
           });
         } else {
           this.setState({
-            map: maps[0].slice(0),
+            map: this.mapMaze(0),
             mode: 'win',
             items: [],
             level: 0,
@@ -235,6 +242,32 @@ export default class Game extends React.Component {
 
   mapCell(x, y) {
     return this.state.map[y][x];
+  }
+
+  mapMaze(level) {
+    const maze = maps[level];
+    if (!maze) {
+      return false;
+    }
+
+    const mazeGolden = maze.slice(0);
+
+    let row;
+    let xPos;
+    let yPos;
+
+    // Now put random gold
+    for (yPos = 0; yPos < maze.length; yPos++) {
+      row = mazeGolden[yPos].split('');
+      for (xPos = 0; xPos < row.length; xPos++) {
+        if (row[xPos] == '0' && Math.random() < 0.15) {
+          row[xPos] = 'g';
+          mazeGolden[yPos] = row.join('');
+        }
+      }
+    }    
+
+    return mazeGolden;
   }
 
   componentDidMount() {
@@ -356,6 +389,11 @@ export default class Game extends React.Component {
                   bottom: Math.floor(this.state.position.y * gridCellHeight * this.context.scale),
                   backgroundColor: backgroundColor
                 }} />
+          <View style={ styles.goldCounter }>
+            <Text style={ styles.goldCounterValue }>{this.state.gold}</Text>
+            <Image style={ styles.goldCounterImage } source={ this.IMAGE_GOLD_STACK } />
+          </View>
+
         </View>
       </TouchableWithoutFeedback>
     );
